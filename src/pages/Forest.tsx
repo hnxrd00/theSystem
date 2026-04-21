@@ -1,11 +1,10 @@
 import { useGame } from "@/context/GameContext";
 import { useSettings } from "@/context/SettingsContext";
 import { motion, AnimatePresence } from "framer-motion";
-import { TreePine, Sprout, Leaf, Droplets, MapPin, Globe, Trees, X, Gamepad2 } from "lucide-react";
+import { TreePine, Sprout, Leaf, X, Gamepad2 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { Progress } from "@/components/ui/progress";
 import { playSound } from "@/lib/sounds";
-import { SEED_TYPES, FocusTree } from "@/lib/game-data";
+import { SEED_TYPES } from "@/lib/game-data";
 import ForestWorld from "./ForestWorld";
 
 // Forest themes with Zelda-styled biomes

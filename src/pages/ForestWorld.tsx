@@ -11,7 +11,6 @@ const TILE = 16;
 const GAME_W = 320;
 const GAME_H = 240;
 const GROWTH_TIME = 5000; // 5 seconds to full growth
-const GROWTH_RATE = 100 / (GROWTH_TIME / 100); // Percentage per 100ms
 
 // Forest themes with Zelda-styled paths
 const FOREST_THEMES = [
@@ -314,7 +313,7 @@ export default function ForestWorld({ selectedTheme, onExit }: { selectedTheme: 
       // Update tree growth
       plantedTrees.forEach(tree => {
         const elapsed = now - tree.plantedAt;
-        const newGrowth = Math.min(100, elapsed / (GROWTH_TIME / 100));
+        const newGrowth = Math.min(100, (elapsed / GROWTH_TIME) * 100);
         const growthDelta = newGrowth - tree.growth;
         tree.growth = newGrowth;
         setTotalGrowth(prev => prev + growthDelta);
