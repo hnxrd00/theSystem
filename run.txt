@@ -1,0 +1,94 @@
+# QuestForge - RPG-Based Productivity App
+## How to Run This Project
+
+### Project Overview
+This is a React + TypeScript + Vite application called "QuestForge" - an RPG-Based Productivity App built with modern web technologies including shadcn/ui components.
+
+### Prerequisites
+Before running this project, make sure you have the following installed:
+- Node.js (version 18 or higher)
+- npm (comes with Node.js)
+
+### Installation Steps
+
+1. **Navigate to the project directory:**
+   ```
+   cd systemv2-main
+   ```
+
+2. **Install all dependencies:**
+   ```
+   npm install
+   ```
+   This will install all the required libraries including:
+   - React 18.3.1
+   - TypeScript 5.8.3
+   - Vite 5.4.19 (build tool)
+   - TailwindCSS 3.4.17 (styling)
+   - shadcn/ui components (@radix-ui libraries)
+   - React Router DOM (navigation)
+   - React Hook Form (form handling)
+   - Framer Motion (animations)
+   - Lucide React (icons)
+   - And many other libraries
+
+### Running the Application
+
+**Development Mode:**
+```
+npm run dev
+```
+This starts the development server and opens the app at http://localhost:8080/
+
+**Build for Production:**
+```
+npm run build
+```
+
+**Preview Production Build:**
+```
+npm run preview
+```
+
+**Running Tests:**
+```
+npm run test
+```
+
+**Linting:**
+```
+npm run lint
+```
+
+### Key Technologies Used
+- **Frontend Framework:** React 18.3.1 with TypeScript
+- **Build Tool:** Vite 5.4.19
+- **Styling:** TailwindCSS with shadcn/ui components
+- **State Management:** React Query (@tanstack/react-query)
+- **Routing:** React Router DOM
+- **Forms:** React Hook Form with Zod validation
+- **Animations:** Framer Motion
+- **Icons:** Lucide React
+- **UI Components:** Radix UI primitives via shadcn/ui
+
+### Project Structure
+- `src/` - Main source code
+- `public/` - Static assets
+- `index.html` - Main HTML file
+- `package.json` - Dependencies and scripts
+- `vite.config.ts` - Vite configuration
+
+### Notes
+- The project uses Google Fonts (Cinzel and Exo 2) for the RPG-themed styling
+- All dependencies have been successfully installed
+- The development server runs on port 8080 by default
+- The app is fully functional and ready to use
+
+### Troubleshooting
+If you encounter any issues:
+1. Make sure Node.js is properly installed
+2. Clear npm cache: `npm cache clean --force`
+3. Delete node_modules and package-lock.json, then run `npm install` again
+4. Ensure port 8080 is not already in use
+
+Enjoy using QuestForge!
