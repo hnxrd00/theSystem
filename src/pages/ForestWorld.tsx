@@ -2,59 +2,72 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useGame } from "@/context/GameContext";
 import { useSettings } from "@/context/SettingsContext";
 import { playSound } from "@/lib/sounds";
-import { motion } from "framer-motion";
-import { TreePine, Sprout, X, Clock, Trees } from "lucide-react";
-import { SEED_TYPES, FocusTree } from "@/lib/game-data";
+import { motion, AnimatePresence } from "framer-motion";
+import { Sprout, X, Trees } from "lucide-react";
+import { SEED_TYPES } from "@/lib/game-data";
 
 // Constants matching GameMode exactly
 const TILE = 16;
-const GAME_W = 240;
-const GAME_H = 176;
+const GAME_W = 320;
+const GAME_H = 240;
+const GROWTH_TIME = 5000; // 5 seconds to full growth
+const GROWTH_RATE = 100 / (GROWTH_TIME / 100); // Percentage per 100ms
 
-// Forest themes (similar to GameMode world themes)
+// Forest themes with Zelda-styled paths
 const FOREST_THEMES = [
   {
-    id: "peaceful_meadow",
-    name: "Peaceful Meadow",
+    id: "verdant_plains",
+    name: "Verdant Plains",
     levelReq: 1,
-    bg: "#87CEEB",
-    floor: "#90EE90",
-    wall: "#8B7355",
+    bg: "#1a3d1a",
+    floor: "#2d5a2d",
+    path: "#5a7a3d",
+    wall: "#0f260f",
     accent: "#4ade80",
-    water: "#4682B4",
-    description: "A calm meadow perfect for planting trees",
+    description: "A peaceful starting forest with gentle paths",
   },
   {
-    id: "golden_field",
-    name: "Golden Field",
+    id: "crystal_woods",
+    name: "Crystal Woods",
     levelReq: 5,
-    bg: "#FFF8DC",
-    floor: "#F5DEB3",
-    wall: "#8B4513",
-    accent: "#fbbf24",
-    water: "#4169E1",
-    description: "Sunny fields with rich soil",
+    bg: "#0f1a2e",
+    floor: "#1a2d4d",
+    path: "#1a3d6d",
+    wall: "#0a1220",
+    accent: "#60a5fa",
+    description: "Enchanted woodland with magical energy",
   },
   {
-    id: "enchanted_grove",
-    name: "Enchanted Grove",
+    id: "golden_grove",
+    name: "Golden Grove",
     levelReq: 10,
-    bg: "#E6E6FA",
-    floor: "#98FB98",
-    wall: "#6B8E23",
+    bg: "#2d1a0a",
+    floor: "#4d3a2a",
+    path: "#6d4a2a",
+    wall: "#1a0f05",
+    accent: "#f97316",
+    description: "Warm forest with golden light filtering through",
+  },
+  {
+    id: "twilight_forest",
+    name: "Twilight Forest",
+    levelReq: 15,
+    bg: "#1a0a2d",
+    floor: "#2d1a4d",
+    path: "#3d2a5d",
+    wall: "#0f0520",
     accent: "#a855f7",
-    water: "#20B2AA",
-    description: "Magical grove with mystical energy",
+    description: "Mystical forest shrouded in twilight magic",
   },
 ];
 
 interface PlantedTree {
+  id: string;
   x: number;
   y: number;
   seedType: string;
   plantedAt: number;
-  growth: number;
-  maxGrowth: number;
+  growth: number; // 0-100
 }
 
 interface GameState {
@@ -65,97 +78,147 @@ interface GameState {
   };
   map: number[][];
   plantedTrees: PlantedTree[];
-  selectedSeed: string | null;
-  plantingMode: boolean;
+  frame: number;
 }
 
-// Simple map generation (copied from GameMode)
-function generateMap(w: number, h: number): number[][] {
+// Improved map generation with winding paths (Zelda-style)
+function generateMapWithPaths(w: number, h: number): number[][] {
   const map: number[][] = [];
+  
+  // Initialize with all grass
   for (let y = 0; y < h; y++) {
     map[y] = [];
     for (let x = 0; x < w; x++) {
+      map[y][x] = 0; // grass
+    }
+  }
+
+  // Add border walls
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
       if (x === 0 || y === 0 || x === w - 1 || y === h - 1) {
         map[y][x] = 1; // wall
-      } else {
-        map[y][x] = 0; // grass
       }
     }
   }
-  
-  // Add some random walls for structure
-  for (let i = 0; i < Math.floor(w * h * 0.1); i++) {
-    const rx = Math.floor(Math.random() * (w - 4)) + 2;
-    const ry = Math.floor(Math.random() * (h - 4)) + 2;
-    if (rx < 4 && ry < 4) continue;
-    map[ry][rx] = 1;
+
+  // Add winding paths (type 2 = path)
+  // Horizontal main path
+  for (let x = 2; x < w - 2; x++) {
+    map[Math.floor(h / 2)][x] = 2;
   }
   
+  // Vertical main path
+  for (let y = 2; y < h - 2; y++) {
+    map[y][Math.floor(w / 2)] = 2;
+  }
+
+  // Add crossing paths to create a cross pattern
+  for (let x = 2; x < w - 2; x++) {
+    map[Math.floor(h / 3)][x] = 2;
+    map[Math.floor(2 * h / 3)][x] = 2;
+  }
+
+  for (let y = 2; y < h - 2; y++) {
+    map[y][Math.floor(w / 3)] = 2;
+    map[y][Math.floor(2 * w / 3)] = 2;
+  }
+
+  // Add some wall clusters for structure
+  for (let i = 0; i < Math.floor(w * h * 0.08); i++) {
+    const rx = Math.floor(Math.random() * (w - 6)) + 3;
+    const ry = Math.floor(Math.random() * (h - 6)) + 3;
+    
+    // Don't place on paths or spawn area
+    if (map[ry][rx] !== 0) continue;
+    if (rx < 4 && ry < 4) continue;
+    
+    map[ry][rx] = 1;
+    
+    // Add some wall extensions
+    if (Math.random() > 0.6) {
+      for (let j = 1; j < 3; j++) {
+        const dir = Math.random() > 0.5;
+        const nx = dir ? rx + j : rx;
+        const ny = dir ? ry : ry + j;
+        if (nx > 1 && nx < w - 2 && ny > 1 && ny < h - 2 && map[ny][nx] === 0) {
+          map[ny][nx] = 1;
+        }
+      }
+    }
+  }
+
   return map;
 }
 
-export default function ForestWorld({ onExit }: { onExit: () => void }) {
-  const { forest, gold, plantTree, inventory, level } = useGame();
+export default function ForestWorld({ selectedTheme, onExit }: { selectedTheme: number; onExit: () => void }) {
+  const { forest, inventory, level, plantTree } = useGame();
   const { soundEnabled } = useSettings();
-  
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animRef = useRef<number>();
-  const gameStateRef = useRef<GameState>();
+  const animRef = useRef<number>(0);
+  const gameStateRef = useRef<GameState | null>(null);
   const keysRef = useRef<Set<string>>(new Set());
-  const lastGrowthUpdate = useRef<number>(0);
-  
-  const [selectedTheme, setSelectedTheme] = useState(0);
-  const [showShop, setShowShop] = useState(false);
-  const [gameOver, setGameOver] = useState(false);
-  const [score, setScore] = useState({ treesPlanted: 0, totalGrowth: 0 });
+  const lastUpdateRef = useRef<number>(Date.now());
+
+  const [seedInventory, setSeedInventory] = useState<Map<string, number>>(new Map());
+  const [selectedSeed, setSelectedSeed] = useState<string | null>(null);
+  const [plantingMode, setPlantingMode] = useState(false);
+  const [treesPlanted, setTreesPlanted] = useState(0);
+  const [totalGrowth, setTotalGrowth] = useState(0);
+  const [showInventory, setShowInventory] = useState(false);
+
+  const theme = FOREST_THEMES[selectedTheme];
+
+  // Initialize seed inventory from game inventory
+  useEffect(() => {
+    const newInv = new Map<string, number>();
+    SEED_TYPES.forEach(seed => {
+      if (inventory.includes(seed.id) || seed.id === "seed_oak") {
+        newInv.set(seed.id, 5); // 5 plantings per seed owned
+      }
+    });
+    setSeedInventory(newInv);
+  }, [inventory]);
 
   // Initialize game state
   useEffect(() => {
-    const theme = FOREST_THEMES[selectedTheme];
-    if (level < theme.levelReq) {
-      setSelectedTheme(0);
-      return;
-    }
-    
     gameStateRef.current = {
       player: {
-        x: 2 * TILE + TILE / 2,
-        y: 2 * TILE + TILE / 2,
+        x: TILE * 3 + TILE / 2,
+        y: TILE * 3 + TILE / 2,
         facing: 0,
       },
-      map: generateMap(20, 15),
+      map: generateMapWithPaths(25, 20),
       plantedTrees: [],
-      selectedSeed: null,
-      plantingMode: false,
+      frame: 0,
     };
-    
-    setGameOver(false);
-    setScore({ treesPlanted: 0, totalGrowth: 0 });
+    setTreesPlanted(0);
+    setTotalGrowth(0);
   }, [selectedTheme, level]);
 
-  // Keyboard controls (copied from GameMode)
+  // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      keysRef.current.add(e.key.toLowerCase());
-      if (e.key === 'Escape') {
-        const gs = gameStateRef.current;
-        if (gs) {
-          gs.plantingMode = false;
-          gs.selectedSeed = null;
-        }
+      const key = e.key.toLowerCase();
+      keysRef.current.add(key);
+      
+      if (key === "escape") {
+        setPlantingMode(false);
+        setSelectedSeed(null);
       }
     };
-    
+
     const handleKeyUp = (e: KeyboardEvent) => {
       keysRef.current.delete(e.key.toLowerCase());
     };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
     };
   }, []);
 
@@ -163,99 +226,101 @@ export default function ForestWorld({ onExit }: { onExit: () => void }) {
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     const gs = gameStateRef.current;
-    if (!canvas || !gs || !gs.plantingMode || !gs.selectedSeed) return;
-    
+    if (!canvas || !gs || !plantingMode || !selectedSeed) return;
+
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    
+
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
-    
-    // Convert to tile coordinates
+
     const tileX = Math.floor(x / TILE);
     const tileY = Math.floor(y / TILE);
-    
-    // Check if valid planting location
-    if (tileX >= 0 && tileX < gs.map[0].length && tileY >= 0 && tileY < gs.map.length) {
-      if (gs.map[tileY][tileX] === 0) { // Only on grass tiles
-        // Check distance from player
+
+    const mapW = gs.map[0].length;
+    const mapH = gs.map.length;
+
+    if (tileX >= 1 && tileX < mapW - 1 && tileY >= 1 && tileY < mapH - 1) {
+      if (gs.map[tileY][tileX] === 0) {
+        // Check distance from player (can plant within 4 tiles)
         const playerTileX = Math.floor(gs.player.x / TILE);
         const playerTileY = Math.floor(gs.player.y / TILE);
-        const distance = Math.abs(tileX - playerTileX) + Math.abs(tileY - playerTileY);
-        
-        if (distance <= 3) { // Within 3 tiles
+        const dist = Math.abs(tileX - playerTileX) + Math.abs(tileY - playerTileY);
+
+        if (dist <= 4) {
           // Check if already has a tree
-          const hasTree = gs.plantedTrees.some(tree => tree.x === tileX && tree.y === tileY);
+          const hasTree = gs.plantedTrees.some(t => t.x === tileX && t.y === tileY);
           if (!hasTree) {
             // Plant the tree
             const newTree: PlantedTree = {
+              id: crypto.randomUUID(),
               x: tileX,
               y: tileY,
-              seedType: gs.selectedSeed,
+              seedType: selectedSeed,
               plantedAt: Date.now(),
               growth: 0,
-              maxGrowth: 100,
             };
-            
+
             gs.plantedTrees.push(newTree);
-            
-            // Also add to game context
-            plantTree(gs.selectedSeed);
-            
-            // Update score
-            setScore(prev => ({
-              treesPlanted: prev.treesPlanted + 1,
-              totalGrowth: prev.totalGrowth
-            }));
-            
+            plantTree(selectedSeed);
+            setTreesPlanted(prev => prev + 1);
+
+            // Decrease seed inventory
+            setSeedInventory(prev => {
+              const newMap = new Map(prev);
+              const count = newMap.get(selectedSeed) || 0;
+              if (count > 1) {
+                newMap.set(selectedSeed, count - 1);
+              } else {
+                newMap.delete(selectedSeed);
+              }
+              return newMap;
+            });
+
             if (soundEnabled) playSound("skillUnlock");
-            
-            // Exit planting mode
-            gs.plantingMode = false;
-            gs.selectedSeed = null;
+            setPlantingMode(false);
+          } else {
+            if (soundEnabled) playSound("error");
           }
         } else {
           if (soundEnabled) playSound("error");
         }
       }
     }
-  }, [plantTree, soundEnabled]);
+  }, [plantingMode, selectedSeed, plantTree, soundEnabled]);
 
-  // Game loop (copied from GameMode structure)
+  // Game loop
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || gameOver) return;
+    if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const theme = FOREST_THEMES[selectedTheme];
     const loop = () => {
       const gs = gameStateRef.current;
       if (!gs) return;
+      
+      gs.frame++;
+      const now = Date.now();
+      const deltaTime = now - lastUpdateRef.current;
+      lastUpdateRef.current = now;
 
       const { player, map, plantedTrees } = gs;
       const keys = keysRef.current;
+      const mapW = map[0].length;
+      const mapH = map.length;
 
-      // Update tree growth (10 seconds to full growth)
-      const now = Date.now();
-      if (now - lastGrowthUpdate.current > 100) { // Update every 100ms
-        lastGrowthUpdate.current = now;
-        
-        plantedTrees.forEach(tree => {
-          if (tree.growth < tree.maxGrowth) {
-            tree.growth += 1; // Grow 1% per 100ms = 10 seconds to full growth
-            
-            // Update total growth score
-            setScore(prev => ({
-              ...prev,
-              totalGrowth: prev.totalGrowth + 1
-            }));
-          }
-        });
-      }
+      // Update tree growth
+      plantedTrees.forEach(tree => {
+        const elapsed = now - tree.plantedAt;
+        const newGrowth = Math.min(100, elapsed / (GROWTH_TIME / 100));
+        const growthDelta = newGrowth - tree.growth;
+        tree.growth = newGrowth;
+        setTotalGrowth(prev => prev + growthDelta);
+      });
 
-      // Player movement (copied from GameMode)
+      // Player movement
       const speed = 1.5;
       let dx = 0, dy = 0;
       if (keys.has("w") || keys.has("arrowup")) dy -= speed;
@@ -272,16 +337,16 @@ export default function ForestWorld({ onExit }: { onExit: () => void }) {
         player.facing = Math.atan2(dy, dx);
       }
 
-      // Collision check (copied from GameMode)
+      // Collision check
       const checkCollision = (x: number, y: number, r: number) => {
         const tx1 = Math.floor((x - r) / TILE);
         const tx2 = Math.floor((x + r) / TILE);
         const ty1 = Math.floor((y - r) / TILE);
         const ty2 = Math.floor((y + r) / TILE);
-        
+
         for (let ty = ty1; ty <= ty2; ty++) {
           for (let tx = tx1; tx <= tx2; tx++) {
-            if (ty < 0 || ty >= map.length || tx < 0 || tx >= map[0].length) return true;
+            if (ty < 0 || ty >= mapH || tx < 0 || tx >= mapW) return true;
             if (map[ty][tx] === 1) return true;
           }
         }
@@ -297,98 +362,145 @@ export default function ForestWorld({ onExit }: { onExit: () => void }) {
       ctx.fillStyle = theme.bg;
       ctx.fillRect(0, 0, GAME_W, GAME_H);
 
-      // Calculate camera (copied from GameMode)
-      const camX = Math.max(0, Math.min(map[0].length * TILE - GAME_W, player.x - GAME_W / 2));
-      const camY = Math.max(0, Math.min(map.length * TILE - GAME_H, player.y - GAME_H / 2));
+      // Calculate camera
+      const camX = Math.max(0, Math.min(mapW * TILE - GAME_W, player.x - GAME_W / 2));
+      const camY = Math.max(0, Math.min(mapH * TILE - GAME_H, player.y - GAME_H / 2));
 
-      // Draw map (copied from GameMode)
-      const startX = Math.floor(camX / TILE);
-      const startY = Math.floor(camY / TILE);
-      const endX = Math.min(map[0].length, startX + Math.ceil(GAME_W / TILE) + 1);
-      const endY = Math.min(map.length, startY + Math.ceil(GAME_H / TILE) + 1);
+      // Draw map with paths
+      const startTX = Math.floor(camX / TILE);
+      const startTY = Math.floor(camY / TILE);
+      const endTX = Math.min(mapW, startTX + Math.ceil(GAME_W / TILE) + 1);
+      const endTY = Math.min(mapH, startTY + Math.ceil(GAME_H / TILE) + 1);
 
-      for (let y = startY; y < endY; y++) {
-        for (let x = startX; x < endX; x++) {
-          const screenX = x * TILE - camX;
-          const screenY = y * TILE - camY;
-          
-          if (map[y][x] === 1) {
+      for (let ty = startTY; ty < endTY; ty++) {
+        for (let tx = startTX; tx < endTX; tx++) {
+          const sx = tx * TILE - camX;
+          const sy = ty * TILE - camY;
+
+          if (map[ty][tx] === 1) {
+            // Wall
             ctx.fillStyle = theme.wall;
+            ctx.fillRect(sx, sy, TILE, TILE);
+            ctx.fillStyle = theme.accent + "20";
+            ctx.fillRect(sx, sy, TILE, 2);
+          } else if (map[ty][tx] === 2) {
+            // Path
+            ctx.fillStyle = theme.path;
+            ctx.fillRect(sx, sy, TILE, TILE);
+            ctx.strokeStyle = theme.path + "80";
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(sx, sy, TILE, TILE);
           } else {
+            // Floor/grass
             ctx.fillStyle = theme.floor;
+            ctx.fillRect(sx, sy, TILE, TILE);
+            ctx.strokeStyle = theme.wall + "30";
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(sx, sy, TILE, TILE);
           }
-          ctx.fillRect(screenX, screenY, TILE, TILE);
         }
       }
 
-      // Draw planted trees
+      // Draw planted trees with pixel art
       plantedTrees.forEach(tree => {
-        const screenX = tree.x * TILE - camX;
-        const screenY = tree.y * TILE - camY;
-        
+        const sx = tree.x * TILE - camX;
+        const sy = tree.y * TILE - camY;
+
         const seed = SEED_TYPES.find(s => s.id === tree.seedType);
         if (seed) {
-          const growthPercent = tree.growth / tree.maxGrowth;
-          const size = 4 + growthPercent * 8; // Grows from 4px to 12px
+          const growthPercent = tree.growth / 100;
+          const size = 2 + growthPercent * 10; // Grows from 2px to 12px
+
+          // Draw tree with trunk and canopy
+          const trunkH = Math.max(1, Math.ceil(growthPercent * 4));
           
-          // Tree trunk
-          ctx.fillStyle = "#8B4513";
-          ctx.fillRect(screenX + TILE/2 - 1, screenY + TILE/2, 2, 4);
-          
-          // Tree canopy
+          // Trunk (brown)
+          ctx.fillStyle = seed.trunkColor;
+          ctx.fillRect(
+            sx + TILE / 2 - 1,
+            sy + TILE / 2 + 2 - trunkH,
+            2,
+            trunkH
+          );
+
+          // Canopy (circular/square pixel style)
           ctx.fillStyle = seed.canopyColor;
-          ctx.fillRect(screenX + TILE/2 - size/2, screenY + TILE/2 - size/2, size, size);
-          
-          // Growth indicator
-          if (growthPercent < 1) {
+          const canopySize = Math.max(2, size);
+          ctx.fillRect(
+            sx + TILE / 2 - canopySize / 2,
+            sy + TILE / 2 - canopySize / 2 - 2,
+            canopySize,
+            canopySize
+          );
+
+          // If flower exists, draw it
+          if (seed.flowerColor && growthPercent > 0.5) {
+            ctx.fillStyle = seed.flowerColor;
+            ctx.fillRect(
+              sx + TILE / 2 - 1,
+              sy + TILE / 2 - canopySize / 2 - 3,
+              2,
+              2
+            );
+          }
+
+          // Growth indicator (small dot for intermediate growth)
+          if (growthPercent < 0.7 && growthPercent > 0.2) {
             ctx.fillStyle = "#fff";
-            ctx.fillRect(screenX + TILE/2 - 1, screenY + TILE/2 - 1, 2, 2);
+            ctx.fillRect(sx + TILE / 2 - 0.5, sy + TILE / 2 - canopySize / 2 - 4, 1, 1);
           }
         }
       });
 
-      // Draw player (copied from GameMode style)
-      const playerScreenX = player.x - camX;
-      const playerScreenY = player.y - camY;
+      // Draw player
+      const px = player.x - camX;
+      const py = player.y - camY;
+
+      // Player body (simple pixel character)
+      ctx.fillStyle = "#FFDCB0"; // Skin
+      ctx.fillRect(px - 3, py - 3, 6, 6);
       
-      ctx.fillStyle = "#FFDCB0"; // Skin color
-      ctx.fillRect(playerScreenX - 3, playerScreenY - 3, 6, 6);
-      ctx.fillRect(playerScreenX - 2, playerScreenY - 6, 4, 4);
-      
+      // Head
+      ctx.fillRect(px - 2, py - 7, 4, 4);
+
       // Direction indicator
       ctx.fillStyle = "#fff";
       ctx.fillRect(
-        playerScreenX + Math.cos(player.facing) * 6 - 1,
-        playerScreenY + Math.sin(player.facing) * 6 - 1,
-        2, 2
+        px + Math.cos(player.facing) * 5 - 1,
+        py + Math.sin(player.facing) * 5 - 1,
+        2,
+        2
       );
 
-      // HUD (copied from GameMode)
+      // Draw HUD
       ctx.fillStyle = "#00000080";
-      ctx.fillRect(0, 0, GAME_W, 16);
-      
+      ctx.fillRect(0, 0, GAME_W, 20);
+
       ctx.fillStyle = "#4ade80";
-      ctx.font = "8px monospace";
+      ctx.font = "10px monospace";
       ctx.textAlign = "left";
-      ctx.fillText(`Trees: ${plantedTrees.length}`, 4, 11);
-      
+      ctx.fillText(`Trees: ${plantedTrees.length}`, 6, 14);
+
+      ctx.fillStyle = "#a3e635";
+      ctx.fillText(`Growth: ${Math.floor(totalGrowth)}`, 6, 26);
+
       ctx.fillStyle = "#fff";
-      ctx.font = "8px monospace";
       ctx.textAlign = "right";
-      ctx.fillText(`Growth: ${score.totalGrowth}`, GAME_W - 4, 11);
+      ctx.fillText(theme.name, GAME_W - 6, 14);
 
       // Planting mode overlay
-      if (gs.plantingMode && gs.selectedSeed) {
-        ctx.fillStyle = "rgba(74, 222, 128, 0.3)";
+      if (plantingMode && selectedSeed) {
+        ctx.fillStyle = "rgba(74, 222, 128, 0.2)";
         ctx.fillRect(0, 0, GAME_W, GAME_H);
-        
-        const seed = SEED_TYPES.find(s => s.id === gs.selectedSeed);
+
+        const seed = SEED_TYPES.find(s => s.id === selectedSeed);
         if (seed) {
           ctx.fillStyle = "#fff";
-          ctx.font = "10px monospace";
+          ctx.font = "12px monospace";
           ctx.textAlign = "center";
-          ctx.fillText(`Planting: ${seed.label}`, GAME_W / 2, 20);
-          ctx.fillText("Click grass to plant", GAME_W / 2, 35);
+          ctx.fillText(`Planting: ${seed.label}`, GAME_W / 2, 40);
+          ctx.font = "10px monospace";
+          ctx.fillText("Click grass to plant", GAME_W / 2, 55);
         }
       }
 
@@ -396,142 +508,91 @@ export default function ForestWorld({ onExit }: { onExit: () => void }) {
     };
 
     animRef.current = requestAnimationFrame(loop);
+
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [selectedTheme, gameOver, score.totalGrowth]);
+  }, [theme, plantingMode, selectedSeed, soundEnabled]);
 
-  const handlePlant = (seedType: string) => {
-    const gs = gameStateRef.current;
-    if (gs) {
-      gs.selectedSeed = seedType;
-      gs.plantingMode = true;
-      setShowShop(false);
+  const handlePlantSeed = (seedId: string) => {
+    if (seedInventory.has(seedId)) {
+      setSelectedSeed(seedId);
+      setPlantingMode(true);
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   return (
-    <div className="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center">
+    <div className="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center gap-4 p-4">
       <div className="absolute top-4 right-4 z-10">
-        <button onClick={onExit} className="p-2 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
+        <button
+          onClick={onExit}
+          className="p-2 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+        >
           <X className="w-5 h-5" />
         </button>
       </div>
-      
-      <div className="mb-3 flex items-center gap-3 text-sm">
-        <span className="text-muted-foreground font-display">{FOREST_THEMES[selectedTheme].name}</span>
-        <div className="flex items-center gap-2 text-xs font-mono">
-          <Trees className="w-3.5 h-3.5" />
-          {score.treesPlanted} trees
-        </div>
-        <div className="flex items-center gap-2 text-xs font-mono">
-          <span className="text-gold">{"\ud83d\udcb0"} {gold}g</span>
+
+      {/* Header info */}
+      <div className="flex items-center justify-between gap-4 text-sm">
+        <span className="text-muted-foreground font-display">{theme.name}</span>
+        <div className="flex items-center gap-3 text-xs font-mono">
+          <span>Trees: {treesPlanted}</span>
+          <span className="text-accent">Growth: {Math.floor(totalGrowth)}</span>
         </div>
       </div>
-      
+
+      {/* Canvas */}
       <canvas
         ref={canvasRef}
         width={GAME_W}
         height={GAME_H}
-        className="border-2 border-border rounded-md"
-        style={{ width: GAME_W * 3, height: GAME_H * 3, imageRendering: "pixelated" }}
+        className="border-4 border-border rounded-lg shadow-lg"
+        style={{
+          width: `${GAME_W * 2.5}px`,
+          height: `${GAME_H * 2.5}px`,
+          imageRendering: "pixelated",
+        }}
         onClick={handleCanvasClick}
       />
-      
-      <div className="mt-3 flex items-center gap-3">
-        <button
-          onClick={() => setShowShop(true)}
-          className="flex items-center gap-2 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:opacity-90 transition-opacity"
-        >
-          <Sprout className="w-3 h-3" />
-          Seed Shop
-        </button>
-        
-        <select
-          value={selectedTheme}
-          onChange={(e) => setSelectedTheme(Number(e.target.value))}
-          className="text-xs bg-card border border-border rounded px-2 py-1"
-        >
-          {FOREST_THEMES.map((theme, i) => (
-            <option key={theme.id} value={i} disabled={level < theme.levelReq}>
-              {theme.name} {level < theme.levelReq && `(Lv.${theme.levelReq})`}
-            </option>
-          ))}
-        </select>
-      </div>
-      
-      <div className="mt-2 text-xs text-muted-foreground space-y-1 text-center">
-        <p>WASD / Arrow keys to move · Click to plant trees</p>
-        <p>Trees grow to full size in 10 seconds</p>
-        {gameStateRef.current?.plantingMode && <p className="text-primary">Planting mode active - ESC to cancel</p>}
+
+      {/* Controls */}
+      <div className="text-xs text-muted-foreground space-y-1 text-center max-w-md">
+        <p>⬆️⬇️⬅️➡️ Move · Select seed below to enter planting mode</p>
+        <p>Press ESC to cancel planting mode</p>
+        <p>Trees grow fully in ~5 seconds</p>
       </div>
 
-      {/* Seed Shop Modal */}
-      {showShop && (
-        <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/60 p-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={() => setShowShop(false)}
-        >
-          <motion.div
-            className="bg-background border border-border rounded-lg p-6 w-full max-w-md space-y-4"
-            initial={{ scale: 0.95 }}
-            animate={{ scale: 1 }}
-            exit={{ scale: 0.95 }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold font-display">Seed Shop</h2>
-              <span className="text-xs font-mono bg-secondary px-2 py-1 rounded-md">{gold}g</span>
-            </div>
+      {/* Seed selector toolbar */}
+      <div className="flex gap-2 flex-wrap justify-center">
+        {Array.from(seedInventory.entries()).map(([seedId, count]) => {
+          const seed = SEED_TYPES.find(s => s.id === seedId);
+          if (!seed) return null;
+          
+          const isSelected = selectedSeed === seedId;
+          return (
+            <motion.button
+              key={seedId}
+              onClick={() => handlePlantSeed(seedId)}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                isSelected
+                  ? "bg-primary text-primary-foreground ring-2 ring-primary/50"
+                  : "bg-card border border-border hover:border-primary/50"
+              }`}
+            >
+              <span className="text-lg">{seed.emoji}</span>
+              <span>{count}</span>
+            </motion.button>
+          );
+        })}
+      </div>
 
-            <div className="grid gap-3">
-              {SEED_TYPES.map(seed => {
-                const owned = inventory.includes(seed.id) || seed.id === "seed_oak";
-                return (
-                  <motion.button
-                    key={seed.id}
-                    onClick={() => {
-                      if (owned || gold >= seed.price) {
-                        if (!owned) {
-                          // Purchase would go here if needed
-                        }
-                        handlePlant(seed.id);
-                      }
-                    }}
-                    disabled={!owned && gold < seed.price}
-                    className="flex items-center gap-3 border border-border rounded-lg p-3 text-left transition-colors disabled:opacity-50"
-                    whileHover={{ scale: 1.02 }}
-                  >
-                    <div
-                      className="w-10 h-10 rounded-lg flex items-center justify-center text-lg"
-                      style={{ backgroundColor: seed.canopyColor + "33" }}
-                    >
-                      {seed.emoji}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{seed.label}</p>
-                      <p className="text-[10px] text-muted-foreground">{seed.description}</p>
-                    </div>
-                    {owned ? (
-                      <span className="text-xs bg-green-500 text-white px-2 py-1 rounded-md">Plant</span>
-                    ) : (
-                      <span className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded-md">{seed.price}g</span>
-                    )}
-                  </motion.button>
-                );
-              })}
-            </div>
-          </motion.div>
-        </motion.div>
+      {/* Empty inventory message */}
+      {seedInventory.size === 0 && (
+        <div className="text-sm text-muted-foreground text-center">
+          <p>No seeds in inventory. Buy seeds from the shop to plant!</p>
+        </div>
       )}
     </div>
   );
